@@ -1,0 +1,298 @@
+// Prisma Schema for CareCircle - Multi-Patient Caregiver Coordination Dashboard
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Admin {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  phone        String?
+  isActive     Boolean   @default(true)
+  tokenVersion Int       @default(0)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Caregiver {
+  id                 String    @id @default(uuid())
+  email              String    @unique
+  passwordHash       String
+  name               String
+  phone              String?
+  education          String?
+  previousExperience String?
+  verificationStatus String    @default("PENDING") // "PENDING" | "VERIFIED" | "REJECTED"
+  rejectionReason    String?
+  isActive           Boolean   @default(true)
+  tokenVersion       Int       @default(0)
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  patients  Patient[]
+  alerts    Alert[]
+  careNotes CareNote[]
+}
+
+model Patient {
+  id               String   @id @default(uuid())
+  caregiverId      String
+  caregiver        Caregiver @relation(fields: [caregiverId], references: [id], onDelete: Cascade)
+  name             String
+  dob              DateTime
+  gender           String?
+  // Describes the patient's relation to the caregiver (e.g. Mother, Father, Self)
+  relationship     String
+  primaryCondition String?
+  bloodType        String?
+  allergies        String?
+  emergencyContact String?
+  notes            String?
+  avatarColor      String   @default("#0D9488")
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  medications   Medication[]
+  medicationLogs MedicationLog[]
+  doseLogs      DoseLog[]
+  symptomLogs   SymptomLog[]
+  appointments  Appointment[]
+  alerts        Alert[]
+  familyMembers FamilyMember[]
+  conversations Conversation[]
+  careNotes     CareNote[]
+}
+
+model FamilyMember {
+  id                String    @id @default(uuid())
+  patientId         String
+  patient           Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  email             String    @unique
+  passwordHash      String
+  name              String
+  phone             String?
+  relationship      String    @default("OTHER") // SON | DAUGHTER | SPOUSE | SIBLING | GRANDCHILD | PARENT | FRIEND | OTHER
+  relationshipOther String?   // Used only when relationship = OTHER
+  isPrimaryContact  Boolean   @default(false)
+  isActive          Boolean   @default(true)
+  tokenVersion      Int       @default(0)
+  lastLoginAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([patientId])
+}
+
+model Medication {
+  id                String          @id @default(uuid())
+  patientId         String
+  patient           Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name              String
+  dosage            String
+  frequency         String
+  timesOfDay        String          // JSON array string e.g. ["08:00", "20:00"]
+  instructions      String?
+  prescribingDoctor String?
+  totalQuantity     Int             @default(30)
+  remainingQuantity Int             @default(30)
+  refillThreshold   Int             @default(7)
+  nextRefillDate    DateTime?
+  isActive          Boolean         @default(true)
+  startDate         DateTime?       @default(now())
+  endDate           DateTime?
+  status            String          @default("ACTIVE") // "ACTIVE" | "STOPPED"
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  logs              MedicationLog[]
+  doseLogs          DoseLog[]
+}
+
+model DoseLog {
+  id           String     @id @default(uuid())
+  medicationId String
+  medication   Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  patientId    String
+  patient      Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  scheduledFor DateTime
+  status       String     @default("PENDING") // "PENDING" | "TAKEN" | "TAKEN_LATE" | "MISSED" | "REFUSED" | "SKIPPED"
+  takenAt      DateTime?
+  note         String?
+  reason       String?
+  loggedByType String?    // "CARETAKER" | "ADMIN" | "FAMILY" | "SYSTEM"
+  loggedById   String?
+  loggedAt     DateTime?
+  editedAt     DateTime?
+  editedById   String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([medicationId, scheduledFor])
+  @@index([patientId, scheduledFor])
+}
+
+model MedicationLog {
+  id           String     @id @default(uuid())
+  medicationId String
+  medication   Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  patientId    String
+  patient      Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  scheduledFor DateTime
+  status       String     // "TAKEN" | "MISSED" | "SKIPPED"
+  takenAt      DateTime?
+  notes        String?
+  createdAt    DateTime   @default(now())
+}
+
+model SymptomLog {
+  id                     String   @id @default(uuid())
+  patientId              String
+  patient                Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  timestamp              DateTime @default(now())
+  bloodPressureSystolic  Int?
+  bloodPressureDiastolic Int?
+  bloodSugar             Float?
+  heartRate              Int?
+  weight                 Float?
+  temperature            Float?
+  mood                   String?
+  symptomSeverity        Int?     // 1 to 10 scale
+  notes                  String?
+  createdAt              DateTime @default(now())
+}
+
+model Appointment {
+  id             String          @id @default(uuid())
+  patientId      String
+  patient        Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorName     String
+  specialty      String?
+  location       String?
+  dateTime       DateTime
+  reason         String?
+  notes          String?
+  status         String          @default("UPCOMING") // "UPCOMING" | "COMPLETED" | "CANCELLED"
+  createdAt      DateTime        @default(now())
+  
+  checklistItems ChecklistItem[]
+}
+
+model ChecklistItem {
+  id            String      @id @default(uuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  task          String
+  isCompleted   Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+}
+
+model Alert {
+  id          String     @id @default(uuid())
+  caregiverId String
+  caregiver   Caregiver  @relation(fields: [caregiverId], references: [id], onDelete: Cascade)
+  patientId   String?
+  patient     Patient?   @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  type        String     // "MISSED_MED", "REFILL_DUE", "UPCOMING_APPOINTMENT", "VITALS_WARNING"
+  title       String
+  message     String
+  severity    String     @default("warning") // "info", "warning", "danger"
+  isRead      Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+}
+
+model NotificationPreference {
+  id                  String   @id @default(uuid())
+  userType            String   @default("CARETAKER") // "ADMIN" | "CARETAKER" | "FAMILY"
+  userId              String   @default("")
+  emailAlerts         Boolean  @default(true)
+  emailRefills        Boolean  @default(true)
+  emailAppointments   Boolean  @default(true)
+  inAppAlerts         Boolean  @default(true)
+  notifyMissedMed     Boolean  @default(true)
+  notifyRefillDue     Boolean  @default(true)
+  notifyVitalsWarning Boolean  @default(true)
+  notifyAppointment   Boolean  @default(true)
+  notificationEmail   String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([userType, userId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorType  String   // "ADMIN" | "CARETAKER" | "FAMILY" | "SYSTEM"
+  actorId    String
+  action     String
+  targetType String
+  targetId   String?
+  summary    String
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId, createdAt])
+}
+
+model SystemSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String   // JSON string
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}
+
+model Conversation {
+  id        String    @id @default(uuid())
+  patientId String
+  patient   Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  messages  Message[]
+
+  @@index([patientId])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderType     String       // "ADMIN" | "CARETAKER" | "FAMILY"
+  senderId       String
+  body           String
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+}
+
+model CareNote {
+  id          String    @id @default(uuid())
+  patientId   String
+  patient     Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  caregiverId String
+  caregiver   Caregiver @relation(fields: [caregiverId], references: [id], onDelete: Cascade)
+  type        String    // "SHIFT_NOTE" | "HANDOVER"
+  body        String
+  createdAt   DateTime  @default(now())
+
+  @@index([patientId])
+  @@index([caregiverId])
+}
+
+model LoginAttempt {
+  id        String   @id @default(uuid())
+  email     String
+  ip        String?
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+}
